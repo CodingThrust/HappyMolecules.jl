@@ -83,7 +83,7 @@ function force!(field::AbstractVector{SVector{D, T}}, x::AbstractVector{SVector{
             field[j] -= ff * xr
 
             # update energy
-            @show energy, ecut
+            #@show energy, ecut
             energy += 4 * r6i * (r6i - 1) - ecut
         end
     end
