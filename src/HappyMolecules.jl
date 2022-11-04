@@ -5,6 +5,7 @@ using Statistics
 
 export molecule_dynamics, step!
 export PeriodicBox, Box, random_locations, uniform_locations
+export positions, velocities, forces, num_particles, kinetic_energy, temperature
 
 abstract type Box{D} end
 
@@ -38,13 +39,67 @@ end
 mutable struct MDRuntime{D, BT, T}
     const config::MDConfig{D,BT,T}
     t::T
-    energy::T
-    const x::AbstractVector{SVector{D, T}}
-    const xm::AbstractVector{SVector{D, T}}
-    const field::AbstractVector{SVector{D, T}}
+    potential_energy::T
+    mean_fr::T
+    const x::Vector{SVector{D, T}}
+    const xm::Vector{SVector{D, T}}
+    const v::Vector{SVector{D,T}}
+    const field::Vector{SVector{D, T}}
 end
 
-function molecule_dynamics(lattice_pos::AbstractVector{SVector{D, T}}, box::Box{D}, temperature::Real, rc2::Real, Δt::Real) where {D, T}
+# get properties from the run time information.
+positions(r::MDRuntime) = r.x
+velocities(r::MDRuntime) = r.v
+forces(r::MDRuntime) = r.field
+num_particles(r::MDRuntime) = r.config.n
+kinetic_energy(r::MDRuntime{D}) where D = temperature(r) * (D / 2)
+mean_fr(r::MDRuntime{D}) where D = r.mean_fr
+function temperature(r::MDRuntime)
+    npart = num_particles(r)
+    sumv2 = zero(T)
+    for i = 1:npart
+        vi = r.v[i]
+        sumv2 += norm2(vi)
+    end
+    return sumv2 / (D * npart)
+end
+
+"""
+Compute the constant volume capacity is using the following equation
+```math
+\\langle K^2 \\rangle - \\langle K \\rangle^2 = \\frac{3 k_b^2 T^2}{2N}(1-\\frac{3k_B}{2C_v})
+```
+"""
+function heat_capacity(r::MDRuntime{D}) where D
+    npart = num_particles(r)
+    sumv2 = zero(T)
+    sumv = zero(SVector{D,T})
+    for i = 1:npart
+        vi = r.v[i]
+        sumv2 += norm2(vi)
+        sumv += vi
+    end
+    fluctuation = sumv2 / npart - (sumv/npart) ^ 2
+    t2 = 3 * temperature ^ 2 / 2 / num_particles(r)
+    t3 = (1 - t2 / fluctuation)  # = 3/(2Cv)
+    return 1.5 / t3
+end
+
+function radial_distribution()
+end
+
+"""
+The most common among the ways to measure the pressure ``P`` is based on the virial equation for the pressure.
+```math
+P = \\rho k_B T + \\frac{1}{dV}\\langle\\sum_{i<j} f(r_{ij}) \\cdot r_{ij}\\rangle
+```
+"""
+pressure(r::MDRuntime{D}) where D = pressure_formula(density(r), temperature(r), mean_fr(r), D, volume(r))
+function pressure_formula(ρ, T, mean_fr, D, volume)
+    ρ * T + mean_fr / D/ volume
+end
+
+function molecule_dynamics(; lattice_pos::AbstractVector{SVector{D, T}}, box::Box{D}, temperature::Real, rc::Real, Δt::Real) where {D, T}
     # assert rc < box / 2
     ############# INIT ###############
     n = length(lattice_pos)
@@ -65,26 +120,27 @@ function molecule_dynamics(lattice_pos::AbstractVector{SVector{D, T}}, box::Box{
     xm = x .- v .* Δt
 
     # intialize a vector field
-    config = MDConfig(; box, n, temperature, rc2, Δt)
-    return MDRuntime(config, zero(T), zero(T), x, xm, zero(v))
+    config = MDConfig(; box, n, temperature, rc^2, Δt)
+    return MDRuntime(config, zero(T), zero(T), zero(T), x, xm, v, zero(v))
 end
 
 function step!(md::MDRuntime)
     # compute the force
-    md.energy = force!(md.field, md.x, md.config.rc2, md.config.box)
-    integrate!(md.x, md.xm, md.field, md.energy, md.config.Δt)
+    md.potential_energy, md.mean_fr = force!(md.field, md.x, md.config.rc2, md.config.box)
+    integrate!(md.x, md.xm, md.v, md.field, md.config.Δt)
     md.t += md.config.Δt
     return md
 end
 
 # Lennard-Jones potential
 # f(r) = 48 r⃗ / r² (1 / r¹² - 0.5* 1 / r⁶)
-function force!(field::AbstractVector{SVector{D, T}}, x::AbstractVector{SVector{D, T}}, rc2, box::Box) where {D,T}
+function force!(field::AbstractVector{SVector{D, T}}, x::AbstractVector{SVector{D, T}}, rc2, box::Box; compute_fr::Bool) where {D,T}
     npart = length(x)
     @debug @assert length(v) == length(field) == npart
     fill!(field, zero(SVector{D, T}))
-    energy = zero(T)
+    potential_energy = zero(T)
     ecut = 4 * (1/rc2^6 - 1/rc2^3)
+    fr = zero(T)
 
     for i=1:npart, j=i+1:npart
         xr = distance_vector(x[i], x[j], box)
@@ -98,13 +154,18 @@ function force!(field::AbstractVector{SVector{D, T}}, x::AbstractVector{SVector{
             field[i] += ff * xr
             field[j] -= ff * xr
 
-            # update energy
+            # compute ⟨f⃗ ⋅ r⃗⟩ e.g. for computing the pressure
+            if compute_fr
+                fr += ff * xr^2
+            end
+
+            # update potential_energy
             # Q: why minus the ecut?
-            energy += 4 * r6i * (r6i - 1) - ecut
+            potential_energy += 4 * r6i * (r6i - 1) - ecut
         end
     end
-    @debug "mean energy = $(energy / npart), ecut = $ecut"
-    return energy
+    @debug "mean potential energy = $(potential_energy / npart), ecut = $ecut"
+    return potential_energy, fr / (npart * (npart-1) ÷ 2)
 end
 
 function distance_vector(x, y, box::PeriodicBox)
@@ -112,23 +173,16 @@ function distance_vector(x, y, box::PeriodicBox)
     return r .- round.(r ./ box.dimensions) .* box.dimensions
 end
 
-function integrate!(x::AbstractVector{SVector{D,T}}, xm, field, energy, Δt) where {D,T}
-    sumv = zero(SVector{D,T})
-    sumv2 = zero(T)
+function integrate!(x::AbstractVector{SVector{D,T}}, xm, v, field, Δt) where {D,T}
     npart = length(x)
 
     # the Verlet algorithm
     for i=1:npart
         xx  = 2 * x[i] - xm[i] + Δt^2 * field[i]
-        vi = (xx - xm[i]) / (2 * Δt)
-        sumv += vi
-        sumv2 += norm2(vi)
+        v[i] = (xx - xm[i]) / (2 * Δt)
         xm[i] = x[i]
         x[i] = xx
     end
-    temperature = sumv2 / (D * npart)
-    energy_total = (energy + 0.5 * sumv2) / npart
-    return temperature, energy_total
 end
 
 end

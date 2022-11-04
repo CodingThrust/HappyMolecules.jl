@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.19.14
+# v0.19.9
 
 using Markdown
 using InteractiveUtils
@@ -54,7 +54,9 @@ md = molecule_dynamics(x0, box, temperature, rc2, 0.005)
 step!(md);
 
 # ╔═╡ 83abee9d-3aa4-4d39-984d-2b4561bc56d8
-@bind generate_video CheckBox()
+md"""
+ $(@bind generate_video CheckBox()) generate clip
+"""
 
 # ╔═╡ 414610d2-c57e-440a-862d-7be78b9b4d37
 filename = tempname() * ".mp4"
@@ -67,7 +69,9 @@ if generate_video
 	arrows!(ax, points, directions)
 	limits!(ax, 0, box.dimensions[1], 0, box.dimensions[2])
 	record(fig, filename, 1:500; framerate = 30, sleep=true) do i
-		step!(md)
+		for j=1:10
+			step!(md)
+		end
 		points[] = [Point2f(mod.(x, box.dimensions)...,) for x in md.x]
 		directions[] = [Point2f(x/10...,) for x in md.field]
 	end
@@ -91,7 +95,7 @@ end
 # ╠═746f55a2-9f58-4793-ad0c-62d39c6b4551
 # ╠═870fd253-d6e9-4921-94cf-97e6395a2443
 # ╠═e94c8411-a202-4ef1-a2a6-557c7c1883c8
-# ╠═83abee9d-3aa4-4d39-984d-2b4561bc56d8
+# ╟─83abee9d-3aa4-4d39-984d-2b4561bc56d8
 # ╠═414610d2-c57e-440a-862d-7be78b9b4d37
 # ╠═0b7b46eb-8b33-48fa-b4e7-60003003cd3a
 # ╠═1d31d9dd-42f5-49e3-a22c-70267f5442ce
