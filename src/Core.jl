@@ -8,12 +8,13 @@ function PeriodicBox(x::T, xs::T...) where T<:Real
 end
 
 function random_locations(box::PeriodicBox{D, T}, natoms::Int) where {D,T}
+    # handle integer locations
     return [rand(SVector{D, T}) .* box.dimensions for _=1:natoms]
 end
 
 function uniform_locations(box::PeriodicBox{D, T}, natoms::Int) where {D,T}
     L = round(Int, natoms ^ (1/D))
-    L^D ≈ natoms || error("`natoms` should be L^$D for some integer L.")
+    L^D == natoms || error("`natoms` should be L^$D for some integer L.")
     return vec([SVector((idx.I .- 1) ./ L .* box.dimensions) for idx in CartesianIndices(ntuple(i->L, D))])
 end
 
