@@ -28,6 +28,8 @@ end
 natoms = 108
 temperature = 0.728
 density = 0.8442
+Nt = 1000
+Δt = 0.01
 filename = tempname() * ".mp4"
 
 # the box
@@ -39,10 +41,21 @@ box = PeriodicBox(SVector(L, L, L))
 lattice_pos = uniform_locations(box, natoms)
 velocities = [rand(SVector{3, Float64}) .- 0.5 for _ = 1:natoms]
 rc = L/2
-md = molecule_dynamics(; lattice_pos, velocities, box, temperature, rc, Δt=0.0005)
-step!(md);
+md = molecule_dynamics(; lattice_pos, velocities, box, temperature, rc, Δt)
+
+ps = Float64[]
+ks = Float64[]
+for j=1:1000
+    step!(md)
+    push!(ps, potential_energy(md))
+    push!(ks, kinetic_energy(md))
+end
 
 using GLMakie
+fig = Figure(; resolution=(800, 800))
+ax = Axis(fig[1,1])
+plot!(ax, 1:1000, ps)
+plot!(ax, 1:1000, ks)
 
 # ╔═╡ 0b7b46eb-8b33-48fa-b4e7-60003003cd3a
 let

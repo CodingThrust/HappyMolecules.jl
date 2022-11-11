@@ -52,6 +52,7 @@ velocities(r::MDRuntime) = r.v
 forces(r::MDRuntime) = r.field
 num_particles(r::MDRuntime) = r.config.n
 kinetic_energy(r::MDRuntime{D}) where D = temperature(r) * (D / 2)
+potential_energy(r::MDRuntime{D}) where D = r.potential_energy / r.config.n
 mean_fr(r::MDRuntime{D}) where D = r.mean_fr
 
 """
@@ -62,7 +63,7 @@ The temperature ``T`` is measured by computing the average kinetic energy per de
 k_B T = \\frac{\\langle 2 \\mathcal{K} \\rangle}{f}.
 ```
 """
-function temperature(r::MDRuntime)
+function temperature(r::MDRuntime{D, BT, T}) where {D, BT, T}
     npart = num_particles(r)
     sumv2 = zero(T)
     for i = 1:npart
