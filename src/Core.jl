@@ -8,13 +8,20 @@ function PeriodicBox(x::T, xs::T...) where T<:Real
 end
 
 function random_locations(box::PeriodicBox{D, T}, natoms::Int) where {D,T}
-    return [rand(SVector{D, T}) .* box.dimensions for _=1:natoms]
+    return [rand_uniform.(Ref(zero(T)), box.dimensions) for _=1:natoms]
+end
+function rand_uniform(min::T, max::T) where T <: AbstractFloat
+    return rand(T) * (max - min) + min
+end
+function rand_uniform(min::T, max::T) where T <: Integer
+    return rand(0:max-min-1) + min
 end
 
 function uniform_locations(box::PeriodicBox{D, T}, natoms::Int) where {D,T}
-    L = round(Int, natoms ^ (1/D))
-    L^D ≈ natoms || error("`natoms` should be L^$D for some integer L.")
-    return vec([SVector((idx.I .- 1) ./ L .* box.dimensions) for idx in CartesianIndices(ntuple(i->L, D))])
+    L = ceil(Int, natoms ^ (1/D))
+    L^D ≈ natoms || @warn("`natoms = $natoms` is not equal to L^$D for some integer L.")
+    CIS = CartesianIndices(ntuple(i->L, D))
+    return vec([SVector((CIS[i].I .- 1) ./ L .* box.dimensions) for i=1:natoms])
 end
 
 norm2(v::SVector) = sum(abs2, v)
@@ -25,6 +32,7 @@ Base.@kwdef struct MDConfig{D, BT<:Box{D}, RT}
     temperature::RT
     rc2::RT
     Δt::RT
+    compute_fr::Bool
 end
 
 mutable struct MDRuntime{D, BT, T}
@@ -99,13 +107,13 @@ function pressure_formula(ρ, T, mean_fr, D, volume)
     ρ * T + mean_fr / D/ volume
 end
 
-function molecule_dynamics(; lattice_pos::AbstractVector{SVector{D, T}}, box::Box{D}, temperature::Real, rc::Real, Δt::Real) where {D, T}
+function molecule_dynamics(; lattice_pos::AbstractVector{SVector{D, T}}, velocities::AbstractVector{SVector{D, T}}, box::Box{D}, temperature::Real, rc::Real, Δt::Real, compute_fr::Bool=false) where {D, T}
     # assert rc < box / 2
     ############# INIT ###############
     n = length(lattice_pos)
     # initialize locations as x and velocities as v
     x = copy(lattice_pos)
-    v = [rand(SVector{D, T}) .- 0.5 for _ = 1:n]
+    v = copy(velocities)
 
     # since we have degree of freedoms 3
     # m*v^2/2 = D/2*k*T, because we have `D` degrees of freedoms to move.
@@ -120,13 +128,13 @@ function molecule_dynamics(; lattice_pos::AbstractVector{SVector{D, T}}, box::Bo
     xm = x .- v .* Δt
 
     # intialize a vector field
-    config = MDConfig(; box, n, temperature, rc2=rc^2, Δt)
+    config = MDConfig(; box, n, temperature, rc2=rc^2, Δt, compute_fr)
     return MDRuntime(config, zero(T), zero(T), zero(T), x, xm, v, zero(v))
 end
 
 function step!(md::MDRuntime)
     # compute the force
-    md.potential_energy, md.mean_fr = force!(md.field, md.x, md.config.rc2, md.config.box)
+    md.potential_energy, md.mean_fr = force!(md.field, md.x, md.config.rc2, md.config.box; compute_fr=md.config.compute_fr)
     integrate!(md.x, md.xm, md.v, md.field, md.config.Δt)
     md.t += md.config.Δt
     return md
