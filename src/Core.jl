@@ -177,9 +177,23 @@ function Base.empty!(bin::Bin{T}) where T
 end
 ncounts(bin::Bin) = sum(bin.counts)
 
-function measure_gr(md::MDRuntime{D}; ncounts=500, min_distance=0.0, max_distance=largest_distance(md.config.box)) where D
+function measure_gr(md::MDRuntime{D}; nbins=500, min_distance=0.0, max_distance=largest_distance(md.config.box)) where D
+    bin = Bin(min_distance, max_distance, nbins)
+    measure_gr!(md, bin)
+    finalize_gr!(bin)
+end
+
+# normalize over volume
+function finalize_gr!(bin::Bin)
+    nbins = length(bin.counts)
+    Δr = (bin.max - bin.min) / nbins
+    rs = ticks(bin)
+    gr = [bin.counts[i] / (3/4*π*((rs[i] + Δr/2)^3 - (rs[i] - Δr/2)^3)) for i=1:nbins]
+    return gr
+end
+
+function collect_gr!(md::MDRuntime, bin::Bin)
     npart = md.config.n
-    bin = Bin(min_distance, max_distance, ncounts)
     for i=1:npart-1, j=i+1:npart
         xr = distance_vector(md.x[i], md.x[j], md.config.box)
         r2 = norm2(xr)

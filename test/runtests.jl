@@ -66,6 +66,9 @@ box = PeriodicBox(SVector(L, L, L))
 
 # initial status
 lattice_pos = uniform_locations(box, natoms)
+for i=1:length(lattice_pos)
+    lattice_pos[i] += randn(SVector{3, Float64}) * 0.006
+end
 velocities = [rand(SVector{3, Float64}) .- 0.5 for _ = 1:natoms]
 rc = L/2
 md = molecule_dynamics(; lattice_pos, velocities, box, temperature, rc, Δt, compute_fr=true)
@@ -76,12 +79,19 @@ md = molecule_dynamics(; lattice_pos, velocities, box, temperature, rc, Δt, com
 ps = Float64[]
 ks = Float64[]
 temps = Float64[]
+
+bin = Bin(0.0, HappyMolecules.largest_distance(md.config.box), 200)
 for j=1:Nt
     step!(md)
     push!(ps, potential_energy(md))
     push!(ks, kinetic_energy(md))
     push!(temps, HappyMolecules.temperature(md))
+    if j > Nt - 100
+        HappyMolecules.collect_gr!(md, bin)
+    end
 end
+
+gr = HappyMolecules.finalize_gr!(bin)
 
 # energy conservation
 @test isapprox(ps[1] + ks[1], ps[end] + ks[end]; atol=1e-2)
