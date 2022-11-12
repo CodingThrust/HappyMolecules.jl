@@ -17,13 +17,13 @@ end
 function rand_uniform(min::T, max::T) where T <: Integer
     return rand(0:max-min-1) + min
 end
-
 function uniform_locations(box::PeriodicBox{D, T}, natoms::Int) where {D,T}
     L = ceil(Int, natoms ^ (1/D))
     L^D ≈ natoms || @warn("`natoms = $natoms` is not equal to L^$D for some integer L.")
     CIS = CartesianIndices(ntuple(i->L, D))
     return vec([SVector((CIS[i].I .- 1) ./ L .* box.dimensions) for i=1:natoms])
 end
+largest_distance(box::PeriodicBox) = sqrt(sum(abs2, box.dimensions)) / 2
 
 norm2(v::SVector) = sum(abs2, v)
 
@@ -146,6 +146,46 @@ function step!(md::MDRuntime)
     integrate!(md.x, md.xm, md.v, md.field, md.config.Δt)
     md.t += md.config.Δt
     return md
+end
+
+# Benhcmark: lammps, gromacs
+struct Bin{T}
+    counts::Vector{Int}
+    min::T
+    max::T
+end
+function Bin(min::T, max::T, n::Int) where T
+    counts = zeros(Int, n)
+    return Bin(counts, min, max)
+end
+
+function ticks(bin::Bin)
+    nticks = length(bin.counts)
+    step = (bin.max - bin.min) / nticks
+    return [bin.min + step * (i - 0.5) for i=1:nticks]
+end
+function Base.push!(bin::Bin{T}, val::T) where T
+    @assert val >= bin.min && val < bin.max "the value $val is out of binning range: [$(bin.min), $(bin.max))."
+    nticks = length(bin.counts)
+    step = (bin.max - bin.min) / nticks
+    bin.counts[floor(Int, (val - bin.min) / step) + 1] += 1
+    return bin
+end
+function Base.empty!(bin::Bin{T}) where T
+    bin.counts .= 0
+    return bin
+end
+ncounts(bin::Bin) = sum(bin.counts)
+
+function measure_gr(md::MDRuntime{D}; ncounts=500, min_distance=0.0, max_distance=largest_distance(md.config.box)) where D
+    npart = md.config.n
+    bin = Bin(min_distance, max_distance, ncounts)
+    for i=1:npart-1, j=i+1:npart
+        xr = distance_vector(md.x[i], md.x[j], md.config.box)
+        r2 = norm2(xr)
+        push!(bin, sqrt(r2))
+    end
+    return bin
 end
 
 # Lennard-Jones potential

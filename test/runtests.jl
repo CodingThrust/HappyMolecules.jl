@@ -9,6 +9,7 @@ plt = pyimport("matplotlib.pyplot")
     Random.seed!(2)
     # random locations in an integer box size
     box = PeriodicBox(10, 10)
+    @test HappyMolecules.largest_distance(box) == 5 * sqrt(2)
     locs = random_locations(box, 10000)
     @test length(locs) == 10000
     @test isapprox(sum(locs)/10000, SVector(4.5, 4.5); atol=5e-2)
@@ -25,6 +26,30 @@ plt = pyimport("matplotlib.pyplot")
     locs = uniform_locations(box, 4)
     @test length(locs) == 4
     @test locs ≈ [SVector(0.0, 0.0), SVector(5.0, 0.0), SVector(0.0, 5.0), SVector(5.0, 5.0)]
+end
+
+@testset "binning" begin
+    # constructor
+    bin = Bin(-1.0, 1.0, 20)
+    # ticks
+    @test ticks(bin) ≈ [-1.05 + 0.1 * i for i=1:20]
+
+    # push!
+    @test_throws AssertionError push!(bin, -2.0)
+    @test_throws AssertionError push!(bin, 2.0)
+    r1 = zeros(Int, 20); r1[end] += 1
+    @test push!(bin, 0.99).counts == r1
+    r1[end] += 1
+    @test push!(bin, 0.91).counts == r1
+    r1[end-1] += 1
+    @test push!(bin, 0.89).counts == r1
+
+    # ncounts
+    @test ncounts(bin) == 3
+
+    # empty!
+    empty!(bin)
+    @test ncounts(bin) == 0
 end
 
 # Case study 4, close to the triple point of a Lennard-Jones Fluid
@@ -46,6 +71,8 @@ rc = L/2
 md = molecule_dynamics(; lattice_pos, velocities, box, temperature, rc, Δt, compute_fr=true)
 
 # Q: how to match the initial potential energy?
+# Anderson thermalstat.
+# Nose-Hoover thermalstat, difficult but better.
 ps = Float64[]
 ks = Float64[]
 temps = Float64[]
@@ -57,7 +84,7 @@ for j=1:Nt
 end
 
 # energy conservation
-@test isapprox(ps[1] + ks[1], ps[end] + ps[end]; atol=1e-2)
+@test isapprox(ps[1] + ks[1], ps[end] + ks[end]; atol=1e-2)
 
 fig = plt.figure(; figsize=(8, 6))
 plt.plot(1:Nt, ps; label="Potential energy")
