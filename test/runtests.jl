@@ -57,7 +57,7 @@ for j=1:Nt
 end
 
 # energy conservation
-@test isapprox(ps[1] + ks[1], ps[end] + ps[end]; atol=1e-2)
+@test isapprox(ps[1] + ks[1], ps[end] + ks[end]; atol=1e-2)
 
 fig = plt.figure(; figsize=(8, 6))
 plt.plot(1:Nt, ps; label="Potential energy")
