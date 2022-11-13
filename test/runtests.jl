@@ -80,18 +80,22 @@ ps = Float64[]
 ks = Float64[]
 temps = Float64[]
 
-bin = Bin(0.0, HappyMolecules.largest_distance(md.config.box), 200)
+bin = Bin(0.0, L/2, 200)
+niters = 1000
 for j=1:Nt
     step!(md)
     push!(ps, potential_energy(md))
     push!(ks, kinetic_energy(md))
     push!(temps, HappyMolecules.temperature(md))
-    if j > Nt - 100
+    if j > Nt - niters
         HappyMolecules.collect_gr!(md, bin)
     end
 end
 
-gr = HappyMolecules.finalize_gr!(bin)
+gr = HappyMolecules.finalize_gr(md, bin, niters)
+plt.plot(ticks(bin), gr)
+plt.show()
+
 
 # energy conservation
 @test isapprox(ps[1] + ks[1], ps[end] + ks[end]; atol=1e-2)

@@ -177,27 +177,31 @@ function Base.empty!(bin::Bin{T}) where T
 end
 ncounts(bin::Bin) = sum(bin.counts)
 
-function measure_gr(md::MDRuntime{D}; nbins=500, min_distance=0.0, max_distance=largest_distance(md.config.box)) where D
+function measure_gr(md::MDRuntime{D}; nbins=500, min_distance=0.0, max_distance=minimum(md.config.box.dimensions)/2) where D
     bin = Bin(min_distance, max_distance, nbins)
     measure_gr!(md, bin)
-    finalize_gr!(bin)
+    finalize_gr(md, bin, 1)
 end
 
 # normalize over volume
-function finalize_gr!(bin::Bin)
+function finalize_gr(md::MDRuntime, bin::Bin, niters::Int)
     nbins = length(bin.counts)
     Δr = (bin.max - bin.min) / nbins
     rs = ticks(bin)
-    gr = [bin.counts[i] / (3/4*π*((rs[i] + Δr/2)^3 - (rs[i] - Δr/2)^3)) for i=1:nbins]
-    return gr
+    return map(1:nbins) do i
+        num_particles = (4/3*π*((rs[i] + Δr/2)^3 - (rs[i] - Δr/2)^3) * density(md))
+        (bin.counts[i] * 2) / niters / md.config.n / num_particles
+    end
 end
 
 function collect_gr!(md::MDRuntime, bin::Bin)
     npart = md.config.n
     for i=1:npart-1, j=i+1:npart
         xr = distance_vector(md.x[i], md.x[j], md.config.box)
-        r2 = norm2(xr)
-        push!(bin, sqrt(r2))
+        r = sqrt(norm2(xr))
+        if r < bin.max
+            push!(bin, r)
+        end
     end
     return bin
 end
