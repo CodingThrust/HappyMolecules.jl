@@ -68,12 +68,19 @@ mean_kinetic_energy(r::MDRuntime{D}) where D = temperature(r) * (D / 2)
 """
 $TYPEDSIGNATURES
 """
-function mean_potential_energy(r::MDRuntime{D,T}) where {D,T}
-    npart = num_particles(r)
+function mean_potential_energy(md::MDRuntime{D,T}) where {D,T}
+    npart = num_particles(md)
     eng = zero(T)
+    k = 1
     for i=1:npart-1
+        xi = md.xm[i]
         for j=i+1:npart
-            eng += potential_energy(r.config.potential, distance_vector(r.x[i], r.x[j], r.config.box))
+            xj = md.xm[j]
+            vec = distance_vector(xi, xj, md.config.box)
+            if norm2(vec) < md.config.rc2
+                eng += potential_energy(md.config.potential, vec)
+                k += 1
+            end
         end
     end
     @debug "mean potential energy = $(eng / npart)"

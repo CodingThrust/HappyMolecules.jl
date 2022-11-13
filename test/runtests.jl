@@ -85,6 +85,7 @@ lattice_pos = uniform_locations(box, natoms)
 #for i=1:length(lattice_pos)
 #    lattice_pos[i] += randn(SVector{3, Float64}) * 0.006
 #end
+Random.seed!(2)
 velocities = [rand(SVector{3, Float64}) .- 0.5 for _ = 1:natoms]
 rc = L/2
 md = molecule_dynamics(; lattice_pos, velocities, box, temperature, rc, Δt, potential=LennardJones(; rc))
@@ -108,7 +109,7 @@ for j=1:Nt
     end
 end
 
-@test isapprox(HappyMolecules.temperature(md), 1.317; atol=0.01)
+@test isapprox(HappyMolecules.temperature(md), 1.4595; atol=0.01)
 
 gr = HappyMolecules.finalize_gr(md, bin, niters)
 plt.plot(ticks(bin), gr)
