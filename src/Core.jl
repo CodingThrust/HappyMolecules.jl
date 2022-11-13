@@ -51,19 +51,6 @@ positions(r::MDRuntime) = r.x
 velocities(r::MDRuntime) = r.v
 forces(r::MDRuntime) = r.field
 num_particles(r::MDRuntime) = r.config.n
-function sum_fr(md::MDRuntime{D}) where D
-    # compute ⟨f⃗ ⋅ r⃗⟩ e.g. for computing the pressure
-    npart = num_particles(md)
-    fr = zero(T)
-    for i=1:npart-1
-        for j=i+1:npart
-            xr = distance_vector(md.x[i], md.x[j], md.config.box)
-            fr += sum(force(md.config.potential, xr) .* xr)
-        end
-    end
-    return fr
-end
-
 mean_kinetic_energy(r::MDRuntime{D}) where D = temperature(r) * (D / 2)
 """
 $TYPEDSIGNATURES
@@ -133,8 +120,22 @@ P = \\rho k_B T + \\frac{1}{dV}\\langle\\sum_{i<j} f(r_{ij}) \\cdot r_{ij}\\rang
 ```
 """
 pressure(r::MDRuntime{D}) where D = pressure_formula(density(r), temperature(r), sum_fr(r), D, volume(r.config.box))
-function pressure_formula(ρ, T, sum_fr, D, volume)
-    ρ * T + sum_fr / D/ volume
+function sum_fr(md::MDRuntime{D,T}) where {D,T}
+    # compute ⟨f⃗ ⋅ r⃗⟩ e.g. for computing the pressure
+    npart = num_particles(md)
+    fr = zero(T)
+    for i=1:npart-1
+        for j=i+1:npart
+            xr = distance_vector(md.x[i], md.x[j], md.config.box)
+            if norm2(xr) < md.config.rc2
+                fr -= sum(force(md.config.potential, xr) .* xr)
+            end
+        end
+    end
+    return fr
+end
+function pressure_formula(ρ, temperature, sum_fr, D, volume)
+    ρ * temperature + sum_fr / D/ volume
 end
 density(md::MDRuntime{D}) where D = md.config.n / volume(md.config.box)
 

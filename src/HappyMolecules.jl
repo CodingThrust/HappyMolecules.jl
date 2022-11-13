@@ -14,5 +14,6 @@ export positions, velocities, forces, num_particles,
 
 include("Core.jl")
 include("enzyme.jl")
+include("applications.jl")
 
 end
