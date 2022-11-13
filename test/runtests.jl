@@ -52,6 +52,22 @@ end
     @test ncounts(bin) == 0
 end
 
+@testset "enzyme potential field" begin
+    potential, vector = LennardJones(), SVector(1.0, 2.0, 1.0)
+    ef = HappyMolecules.enzyme_potential_field(potential, vector)[1]
+    field = force(potential, vector)
+    @test field ≈ ef
+end
+
+@testset "LennardJones potential" begin
+    rc = 2.519394287073761
+    rc2 = rc ^ 2
+    ecut = 4 * (1/rc2^6 - 1/rc2^3)
+    p = LennardJones(; rc)
+    @test p.ecut ≈ ecut
+    @test isapprox(potential_energy(p, SVector(0.0, rc)), 0; atol=1e-8)
+end
+
 # Case study 4, close to the triple point of a Lennard-Jones Fluid
 natoms = 108
 temperature = 0.728
@@ -71,7 +87,7 @@ lattice_pos = uniform_locations(box, natoms)
 #end
 velocities = [rand(SVector{3, Float64}) .- 0.5 for _ = 1:natoms]
 rc = L/2
-md = molecule_dynamics(; lattice_pos, velocities, box, temperature, rc, Δt, potential=LennardJones())
+md = molecule_dynamics(; lattice_pos, velocities, box, temperature, rc, Δt, potential=LennardJones(; rc))
 
 # Q: how to match the initial potential energy?
 # Anderson thermalstat.
@@ -92,6 +108,8 @@ for j=1:Nt
     end
 end
 
+@test isapprox(HappyMolecules.temperature(md), 1.317; atol=0.01)
+
 gr = HappyMolecules.finalize_gr(md, bin, niters)
 plt.plot(ticks(bin), gr)
 plt.show()
@@ -100,7 +118,6 @@ plt.show()
 # energy conservation
 @test isapprox(ps[1] + ks[1], ps[end] + ks[end]; atol=1e-2)
 
-fig = plt.figure(; figsize=(8, 6))
 plt.plot(1:Nt, ps; label="Potential energy")
 plt.plot(1:Nt, ks; label="Kinetic energy")
 plt.plot(1:Nt, ps .+ ks; label="Total energy", color="k", ls="--")

@@ -13,5 +13,6 @@ export positions, velocities, forces, num_particles,
         pressure
 
 include("Core.jl")
+include("enzyme.jl")
 
 end

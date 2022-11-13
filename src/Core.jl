@@ -73,7 +73,7 @@ function mean_potential_energy(r::MDRuntime{D,T}) where {D,T}
     eng = zero(T)
     for i=1:npart-1
         for j=i+1:npart
-            eng += potential_energy(r.config.potential, sqrt(norm2(r.x[i] - r.x[j])))
+            eng += potential_energy(r.config.potential, distance_vector(r.x[i], r.x[j], r.config.box))
         end
     end
     @debug "mean potential energy = $(eng / npart)"
@@ -229,11 +229,9 @@ function update_force_field!(potential::PotentialField, field::AbstractVector{SV
     @assert length(field) == npart
     fill!(field, zero(SVector{D, T}))
 
-    for i=1:npart, j=i+1:npart
+    for i=1:npart-1, j=i+1:npart
         xr = distance_vector(x[i], x[j], box)
-        r2 = norm2(xr)
-        if r2 < rc2
-            # Lennard-Jones potential
+        if norm2(xr) < rc2
             f = force(potential, xr)
             field[i] += f
             field[j] -= f
@@ -247,26 +245,31 @@ f(r) = \\frac{48 \\vec{r}}{r^2}(\\frac{1}{r^{12}} - 0.5 \\frac{1}{r^6})
 ```
 """
 struct LennardJones <: PotentialField
+    ecut::Float64
+end
+
+function LennardJones(; rc::Real=Inf)
+    r6i = rc ^ -6
+    return LennardJones(4 * r6i * (r6i - 1))
 end
 
 function force(::LennardJones, distance_vector::SVector)
     r2 = norm2(distance_vector)
     r2i = inv(r2)
     r6i = r2i ^ 3
-    ff = 48 * r2i * r6i * (r6i - 0.5)
+    ff = - 48 * r2i * r6i * (r6i - 0.5)
     return ff * distance_vector
 end
 
-function potential_energy(::LennardJones, distance::Real)
-    r6i = distance ^ -6
+function potential_energy(potential::LennardJones, distance_vector::SVector)
+    r6i = norm2(distance_vector) ^ -3
     # Q: why minus ecut?
-    rc2 = 2.519394287073761 ^ 2
-     ecut = 4 * (1/rc2^6 - 1/rc2^3)
-    return 4 * r6i * (r6i - 1) - ecut
+    return 4 * r6i * (r6i - 1) - potential.ecut
 end
 
+# vector: y - x
 function distance_vector(x, y, box::PeriodicBox)
-    r = x - y
+    r = y - x
     return r .- round.(r ./ box.dimensions) .* box.dimensions
 end
 
@@ -281,4 +284,3 @@ function integrate!(x::AbstractVector{SVector{D,T}}, xm, v, field, Δt) where {D
         x[i] = xx
     end
 end
-
