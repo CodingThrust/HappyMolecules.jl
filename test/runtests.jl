@@ -66,12 +66,12 @@ box = PeriodicBox(SVector(L, L, L))
 
 # initial status
 lattice_pos = uniform_locations(box, natoms)
-for i=1:length(lattice_pos)
-    lattice_pos[i] += randn(SVector{3, Float64}) * 0.006
-end
+#for i=1:length(lattice_pos)
+#    lattice_pos[i] += randn(SVector{3, Float64}) * 0.006
+#end
 velocities = [rand(SVector{3, Float64}) .- 0.5 for _ = 1:natoms]
 rc = L/2
-md = molecule_dynamics(; lattice_pos, velocities, box, temperature, rc, Δt, compute_fr=true)
+md = molecule_dynamics(; lattice_pos, velocities, box, temperature, rc, Δt, potential=LennardJones())
 
 # Q: how to match the initial potential energy?
 # Anderson thermalstat.
@@ -84,8 +84,8 @@ bin = Bin(0.0, L/2, 200)
 niters = 1000
 for j=1:Nt
     step!(md)
-    push!(ps, potential_energy(md))
-    push!(ks, kinetic_energy(md))
+    push!(ps, mean_potential_energy(md))
+    push!(ks, mean_kinetic_energy(md))
     push!(temps, HappyMolecules.temperature(md))
     if j > Nt - niters
         HappyMolecules.collect_gr!(md, bin)
