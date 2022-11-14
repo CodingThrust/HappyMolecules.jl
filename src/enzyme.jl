@@ -17,3 +17,7 @@ using Enzyme
 
 # BatchedDuplicatedNoNeed{T}(shaodows)
 # Like DuplicatedNoNeed, but expects a Tuple of shadow values.
+
+function enzyme_potential_field(potential::PotentialField, distance_vector::SVector)
+    Enzyme.autodiff(potential_energy, Const(potential), Active(distance_vector))
+end

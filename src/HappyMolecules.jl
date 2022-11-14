@@ -7,10 +7,13 @@ using DocStringExtensions
 export Bin, ticks, ncounts
 export molecule_dynamics, step!
 export PeriodicBox, Box, random_locations, uniform_locations, volume
+export PotentialField, LennardJones, potential_energy, force
 export positions, velocities, forces, num_particles,
-        kinetic_energy, temperature, potential_energy,
+        mean_kinetic_energy, temperature, mean_potential_energy,
         pressure
 
 include("Core.jl")
+include("enzyme.jl")
+include("applications.jl")
 
 end

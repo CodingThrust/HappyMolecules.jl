@@ -2,8 +2,7 @@ using HappyMolecules
 using Test, Random
 
 using StaticArrays
-using PythonCall
-plt = pyimport("matplotlib.pyplot")
+using HappyMolecules.Applications: lennard_jones_triple_point
 
 @testset "location initialization" begin
     Random.seed!(2)
@@ -52,83 +51,28 @@ end
     @test ncounts(bin) == 0
 end
 
-# Case study 4, close to the triple point of a Lennard-Jones Fluid
-natoms = 108
-temperature = 0.728
-density = 0.8442
-Nt = 2000
-Δt = 0.001
-
-# the box
-volume = natoms / density
-L = volume ^ (1/3)
-box = PeriodicBox(SVector(L, L, L))
-
-# initial status
-lattice_pos = uniform_locations(box, natoms)
-for i=1:length(lattice_pos)
-    lattice_pos[i] += randn(SVector{3, Float64}) * 0.006
-end
-velocities = [rand(SVector{3, Float64}) .- 0.5 for _ = 1:natoms]
-rc = L/2
-md = molecule_dynamics(; lattice_pos, velocities, box, temperature, rc, Δt, compute_fr=true)
-
-# Q: how to match the initial potential energy?
-# Anderson thermalstat.
-# Nose-Hoover thermalstat, difficult but better.
-ps = Float64[]
-ks = Float64[]
-temps = Float64[]
-
-bin = Bin(0.0, L/2, 200)
-niters = 1000
-for j=1:Nt
-    step!(md)
-    push!(ps, potential_energy(md))
-    push!(ks, kinetic_energy(md))
-    push!(temps, HappyMolecules.temperature(md))
-    if j > Nt - niters
-        HappyMolecules.collect_gr!(md, bin)
-    end
+@testset "enzyme potential field" begin
+    potential, vector = LennardJones(), SVector(1.0, 2.0, 1.0)
+    ef = HappyMolecules.enzyme_potential_field(potential, vector)[1]
+    field = force(potential, vector)
+    @test field ≈ ef
 end
 
-gr = HappyMolecules.finalize_gr(md, bin, niters)
-plt.plot(ticks(bin), gr)
-plt.show()
-
-
-# energy conservation
-@test isapprox(ps[1] + ks[1], ps[end] + ks[end]; atol=1e-2)
-
-fig = plt.figure(; figsize=(8, 6))
-plt.plot(1:Nt, ps; label="Potential energy")
-plt.plot(1:Nt, ks; label="Kinetic energy")
-plt.plot(1:Nt, ps .+ ks; label="Total energy", color="k", ls="--")
-plt.xlabel("step")
-plt.ylabel("Energy/N")
-plt.legend()
-plt.show()
-
-# ╔═╡ 0b7b46eb-8b33-48fa-b4e7-60003003cd3a
-let
-    filename = tempname() * ".mp4"
-    fig = Figure(; resolution=(800, 800))
-    ax = Axis3(fig[1,1]; aspect=:data)
-    limits = GLMakie.FRect3D((0, 0, 0),(box.dimensions...,))
-    limits!(ax, limits)
-	points = Observable([Point3f(x...,) for x in md.x])
-	directions = Observable([Point3f(x/100...,) for x in md.field])
-	scatter!(ax, points)
-	arrows!(ax, points, directions; linewidth=0.02, arrowsize=0.1)
-	record(fig, filename, 1:500; framerate = 30, sleep=true) do i
-		for j=1:10
-			step!(md)
-		end
-		points[] = [Point3f(mod.(x, box.dimensions)...,) for x in md.x]
-		directions[] = [Point3f(x/100...,) for x in md.field]
-	end
+@testset "LennardJones potential" begin
+    rc = 2.519394287073761
+    rc2 = rc ^ 2
+    ecut = 4 * (1/rc2^6 - 1/rc2^3)
+    p = LennardJones(; rc)
+    @test p.ecut ≈ ecut
+    @test isapprox(potential_energy(p, SVector(0.0, rc)), 0; atol=1e-8)
 end
 
-@testset "HappyMolecules.jl" begin
-    # Write your tests here.
+@testset "LennardJones triple point" begin
+    res = lennard_jones_triple_point()
+    md = res.runtime
+    @test isapprox(HappyMolecules.temperature(md), 1.4595; atol=0.01)
+    @test isapprox(HappyMolecules.pressure(md), 5.27; atol=5e-2)
+    # energy conservation
+    ks, ps = res.kinetic_energy, res.potential_energy
+    @test isapprox(ps[1] + ks[1], ps[end] + ks[end]; atol=1e-2)
 end

@@ -1,0 +1,8 @@
+[deps]
+HappyMolecules = "800cb13d-1614-43bf-9060-6b9e570c014e"
+PythonCall = "6099a3de-0909-46bc-b1f4-468b9a2dfc0d"
+
+[compat]
+julia = "1"
+HappyMolecules = "0.1"
+PythonCall = "0.9"

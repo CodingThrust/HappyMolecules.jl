@@ -1,3 +1,4 @@
+abstract type PotentialField end
 abstract type Box{D} end
 
 struct PeriodicBox{D, T} <: Box{D}
@@ -27,20 +28,18 @@ largest_distance(box::PeriodicBox) = sqrt(sum(abs2, box.dimensions)) / 2
 
 norm2(v::SVector) = sum(abs2, v)
 
-Base.@kwdef struct MDConfig{D, BT<:Box{D}, RT}
+Base.@kwdef struct MDConfig{D, RT, BT<:Box{D}, PT<:PotentialField}
     box::BT
+    potential::PT
     n::Int
     temperature::RT
     rc2::RT
     Δt::RT
-    compute_fr::Bool
 end
 
-mutable struct MDRuntime{D, BT, T}
-    const config::MDConfig{D,BT,T}
+mutable struct MDRuntime{D, T, BT, PT}
+    const config::MDConfig{D,T,BT,PT}
     t::T
-    potential_energy::T
-    mean_fr::T
     const x::Vector{SVector{D, T}}
     const xm::Vector{SVector{D, T}}
     const v::Vector{SVector{D,T}}
@@ -52,13 +51,27 @@ positions(r::MDRuntime) = r.x
 velocities(r::MDRuntime) = r.v
 forces(r::MDRuntime) = r.field
 num_particles(r::MDRuntime) = r.config.n
-kinetic_energy(r::MDRuntime{D}) where D = temperature(r) * (D / 2)
-potential_energy(r::MDRuntime{D}) where D = r.potential_energy / r.config.n
-function mean_fr(r::MDRuntime{D}) where D
-    if !r.config.compute_fr
-        error("The `compute_fr` switch is off in the config, please turn it on!")
+mean_kinetic_energy(r::MDRuntime{D}) where D = temperature(r) * (D / 2)
+"""
+$TYPEDSIGNATURES
+"""
+function mean_potential_energy(md::MDRuntime{D,T}) where {D,T}
+    npart = num_particles(md)
+    eng = zero(T)
+    k = 1
+    for i=1:npart-1
+        xi = md.xm[i]
+        for j=i+1:npart
+            xj = md.xm[j]
+            vec = distance_vector(xi, xj, md.config.box)
+            if norm2(vec) < md.config.rc2
+                eng += potential_energy(md.config.potential, vec)
+                k += 1
+            end
+        end
     end
-    return r.mean_fr
+    @debug "mean potential energy = $(eng / npart)"
+    return eng / npart
 end
 
 """
@@ -69,7 +82,7 @@ The temperature ``T`` is measured by computing the average kinetic energy per de
 k_B T = \\frac{\\langle 2 \\mathcal{K} \\rangle}{f}.
 ```
 """
-function temperature(r::MDRuntime{D, BT, T}) where {D, BT, T}
+function temperature(r::MDRuntime{D, T}) where {D, T}
     npart = num_particles(r)
     sumv2 = zero(T)
     for i = 1:npart
@@ -100,22 +113,33 @@ function heat_capacity(r::MDRuntime{D}) where D
     return 1.5 / t3
 end
 
-function radial_distribution()
-end
-
 """
 The most common among the ways to measure the pressure ``P`` is based on the virial equation for the pressure.
 ```math
 P = \\rho k_B T + \\frac{1}{dV}\\langle\\sum_{i<j} f(r_{ij}) \\cdot r_{ij}\\rangle
 ```
 """
-pressure(r::MDRuntime{D}) where D = pressure_formula(density(r), temperature(r), mean_fr(r), D, volume(r.config.box))
-function pressure_formula(ρ, T, mean_fr, D, volume)
-    ρ * T + mean_fr / D/ volume
+pressure(r::MDRuntime{D}) where D = pressure_formula(density(r), temperature(r), sum_fr(r), D, volume(r.config.box))
+function sum_fr(md::MDRuntime{D,T}) where {D,T}
+    # compute ⟨f⃗ ⋅ r⃗⟩ e.g. for computing the pressure
+    npart = num_particles(md)
+    fr = zero(T)
+    for i=1:npart-1
+        for j=i+1:npart
+            xr = distance_vector(md.x[i], md.x[j], md.config.box)
+            if norm2(xr) < md.config.rc2
+                fr -= sum(force(md.config.potential, xr) .* xr)
+            end
+        end
+    end
+    return fr
+end
+function pressure_formula(ρ, temperature, sum_fr, D, volume)
+    ρ * temperature + sum_fr / D/ volume
 end
 density(md::MDRuntime{D}) where D = md.config.n / volume(md.config.box)
 
-function molecule_dynamics(; lattice_pos::AbstractVector{SVector{D, T}}, velocities::AbstractVector{SVector{D, T}}, box::Box{D}, temperature::Real, rc::Real, Δt::Real, compute_fr::Bool=false) where {D, T}
+function molecule_dynamics(; lattice_pos::AbstractVector{SVector{D, T}}, velocities::AbstractVector{SVector{D, T}}, box::Box{D}, potential::PotentialField, temperature::Real, rc::Real, Δt::Real) where {D, T}
     # assert rc < box / 2
     ############# INIT ###############
     n = length(lattice_pos)
@@ -136,13 +160,13 @@ function molecule_dynamics(; lattice_pos::AbstractVector{SVector{D, T}}, velocit
     xm = x .- v .* Δt
 
     # intialize a vector field
-    config = MDConfig(; box, n, temperature, rc2=rc^2, Δt, compute_fr)
-    return MDRuntime(config, zero(T), zero(T), zero(T), x, xm, v, zero(v))
+    config = MDConfig(; box, n, temperature, rc2=rc^2, Δt, potential)
+    return MDRuntime(config, zero(T), x, xm, v, zero(v))
 end
 
 function step!(md::MDRuntime)
     # compute the force
-    md.potential_energy, md.mean_fr = force!(md.field, md.x, md.config.rc2, md.config.box; compute_fr=md.config.compute_fr)
+    update_force_field!(md.config.potential, md.field, md.x, md.config.rc2, md.config.box)
     integrate!(md.x, md.xm, md.v, md.field, md.config.Δt)
     md.t += md.config.Δt
     return md
@@ -208,42 +232,52 @@ end
 
 # Lennard-Jones potential
 # f(r) = 48 r⃗ / r² (1 / r¹² - 0.5* 1 / r⁶)
-function force!(field::AbstractVector{SVector{D, T}}, x::AbstractVector{SVector{D, T}}, rc2, box::Box; compute_fr::Bool) where {D,T}
+function update_force_field!(potential::PotentialField, field::AbstractVector{SVector{D, T}}, x::AbstractVector{SVector{D, T}}, rc2, box::Box) where {D,T}
     npart = length(x)
-    @debug @assert length(v) == length(field) == npart
+    @assert length(field) == npart
     fill!(field, zero(SVector{D, T}))
-    potential_energy = zero(T)
-    ecut = 4 * (1/rc2^6 - 1/rc2^3)
-    fr = zero(T)
 
-    for i=1:npart, j=i+1:npart
+    for i=1:npart-1, j=i+1:npart
         xr = distance_vector(x[i], x[j], box)
-        r2 = norm2(xr)
-        if r2 < rc2
-            r2i = 1 / r2
-            r6i = r2i ^ 3
-
-            # Lennard-Jones potential
-            ff = 48 * r2i * r6i * (r6i - 0.5)
-            field[i] += ff * xr
-            field[j] -= ff * xr
-
-            # compute ⟨f⃗ ⋅ r⃗⟩ e.g. for computing the pressure
-            if compute_fr
-                fr += ff * r2
-            end
-
-            # update potential_energy
-            # Q: why minus the ecut?
-            potential_energy += 4 * r6i * (r6i - 1) - ecut
+        if norm2(xr) < rc2
+            f = force(potential, xr)
+            field[i] += f
+            field[j] -= f
         end
     end
-    @debug "mean potential energy = $(potential_energy / npart), ecut = $ecut"
-    return potential_energy, fr / (npart * (npart-1) ÷ 2)
 end
 
+"""
+```math
+f(r) = \\frac{48 \\vec{r}}{r^2}(\\frac{1}{r^{12}} - 0.5 \\frac{1}{r^6})
+```
+"""
+struct LennardJones <: PotentialField
+    ecut::Float64
+end
+
+function LennardJones(; rc::Real=Inf)
+    r6i = rc ^ -6
+    return LennardJones(4 * r6i * (r6i - 1))
+end
+
+function force(::LennardJones, distance_vector::SVector)
+    r2 = norm2(distance_vector)
+    r2i = inv(r2)
+    r6i = r2i ^ 3
+    ff = - 48 * r2i * r6i * (r6i - 0.5)
+    return ff * distance_vector
+end
+
+function potential_energy(potential::LennardJones, distance_vector::SVector)
+    r6i = norm2(distance_vector) ^ -3
+    # Q: why minus ecut?
+    return 4 * r6i * (r6i - 1) - potential.ecut
+end
+
+# vector: y - x
 function distance_vector(x, y, box::PeriodicBox)
-    r = x - y
+    r = y - x
     return r .- round.(r ./ box.dimensions) .* box.dimensions
 end
 
@@ -258,4 +292,3 @@ function integrate!(x::AbstractVector{SVector{D,T}}, xm, v, field, Δt) where {D
         x[i] = xx
     end
 end
-
