@@ -65,7 +65,13 @@ jobs:
             end
             '
       - name: Build documents
-        run: julia --project=docs docs/make.jl
+        run: |
+          julia --project=docs -e '
+            using Pkg;
+            Pkg.develop(path=pwd());
+            Pkg.instantiate();
+            include(joinpath(pwd(), "docs", "make.jl"))
+            '
       - name: Deploy to gh-pages
         uses: JamesIves/github-pages-deploy-action@releases/v3
         with:
