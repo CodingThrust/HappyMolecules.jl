@@ -1,15 +1,28 @@
 module Applications
 
 using Random, StaticArrays
+using DocStringExtensions
 using ..HappyMolecules
 
 export lennard_jones_triple_point
 
-# Case study 4, close to the triple point of a Lennard-Jones Fluid in a 3D periodic box
+# setup docstring format
+DocStringExtensions.@template (FUNCTIONS, METHODS, MACROS) =
+    """
+    $(SIGNATURES)
+    $(DOCSTRING)
+    $(METHODLIST)
+    """
+
+"""
+Case study 4 in the book "From Mathematics to Generic Programming".
+It is about the molecule dynamics simulation of a Lennard-Jones Fluid in a 3D periodic box.
+The parameters are set close to the triple point.
+"""
 function lennard_jones_triple_point(;
-        natoms::Int = 108,
-        temperature::Real = 0.728,
-        density::Real = 0.8442,
+        natoms::Int = 108,  # number of atoms
+        temperature::Real = 0.728,   # initial temperature
+        density::Real = 0.8442,   # density of particles
         Nt = 2000,
         Δt = 0.001,
         seed::Int = 2,

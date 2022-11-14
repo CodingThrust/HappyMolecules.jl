@@ -1,11 +1,6 @@
 # HappyMolecules.jl
 
 
-## Manual
+## Notebooks
 
-```@contents
-Pages = [
-    "ref.md",
-]
-Depth = 1
-```
+* [demo](demo.md)

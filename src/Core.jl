@@ -47,14 +47,11 @@ mutable struct MDRuntime{D, T, BT, PT}
 end
 
 # get properties from the run time information.
-positions(r::MDRuntime) = r.x
-velocities(r::MDRuntime) = r.v
-forces(r::MDRuntime) = r.field
-num_particles(r::MDRuntime) = r.config.n
-mean_kinetic_energy(r::MDRuntime{D}) where D = temperature(r) * (D / 2)
-"""
-$TYPEDSIGNATURES
-"""
+positions(md::MDRuntime) = md.x
+velocities(md::MDRuntime) = md.v
+forces(md::MDRuntime) = md.field
+num_particles(md::MDRuntime) = md.config.n
+mean_kinetic_energy(md::MDRuntime{D}) where D = temperature(md) * (D / 2)
 function mean_potential_energy(md::MDRuntime{D,T}) where {D,T}
     npart = num_particles(md)
     eng = zero(T)
@@ -75,18 +72,16 @@ function mean_potential_energy(md::MDRuntime{D,T}) where {D,T}
 end
 
 """
-$TYPEDSIGNATURES
-
 The temperature ``T`` is measured by computing the average kinetic energy per degree of freedom.
 ```math
 k_B T = \\frac{\\langle 2 \\mathcal{K} \\rangle}{f}.
 ```
 """
-function temperature(r::MDRuntime{D, T}) where {D, T}
-    npart = num_particles(r)
+function temperature(md::MDRuntime{D, T}) where {D, T}
+    npart = num_particles(md)
     sumv2 = zero(T)
     for i = 1:npart
-        vi = r.v[i]
+        vi = md.v[i]
         sumv2 += norm2(vi)
     end
     return sumv2 / (D * npart)
@@ -98,17 +93,17 @@ Compute the constant volume capacity is using the following equation
 \\langle K^2 \\rangle - \\langle K \\rangle^2 = \\frac{3 k_b^2 T^2}{2N}(1-\\frac{3k_B}{2C_v})
 ```
 """
-function heat_capacity(r::MDRuntime{D}) where D
-    npart = num_particles(r)
+function heat_capacity(md::MDRuntime{D}) where D
+    npart = num_particles(md)
     sumv2 = zero(T)
     sumv = zero(SVector{D,T})
     for i = 1:npart
-        vi = r.v[i]
+        vi = md.v[i]
         sumv2 += norm2(vi)
         sumv += vi
     end
     fluctuation = sumv2 / npart - (sumv/npart) ^ 2
-    t2 = 3 * temperature ^ 2 / 2 / num_particles(r)
+    t2 = 3 * temperature ^ 2 / 2 / num_particles(md)
     t3 = (1 - t2 / fluctuation)  # = 3/(2Cv)
     return 1.5 / t3
 end
@@ -119,7 +114,7 @@ The most common among the ways to measure the pressure ``P`` is based on the vir
 P = \\rho k_B T + \\frac{1}{dV}\\langle\\sum_{i<j} f(r_{ij}) \\cdot r_{ij}\\rangle
 ```
 """
-pressure(r::MDRuntime{D}) where D = pressure_formula(density(r), temperature(r), sum_fr(r), D, volume(r.config.box))
+pressure(md::MDRuntime{D}) where D = pressure_formula(density(md), temperature(md), sum_fr(md), D, volume(md.config.box))
 function sum_fr(md::MDRuntime{D,T}) where {D,T}
     # compute ⟨f⃗ ⋅ r⃗⟩ e.g. for computing the pressure
     npart = num_particles(md)
