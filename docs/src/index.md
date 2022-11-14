@@ -3,4 +3,4 @@
 
 ## Notebooks
 
-* [demo](demo.md)
+* [demo notebook](demo)
