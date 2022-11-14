@@ -2,3 +2,4 @@
 .vscode/
 *.swp
 .CondaPkg/
+docs/Manifest.toml

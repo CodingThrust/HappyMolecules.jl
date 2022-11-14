@@ -54,7 +54,7 @@ jobs:
           version: '1'
 
       - name: Run Pluto notebooks
-        run: julia -e 'using Pkg;
+        - run: julia -e 'using Pkg;
             Pkg.add("PlutoUI");
             Pkg.activate("notebooks");
             Pkg.instantiate();
@@ -64,6 +64,7 @@ jobs:
               endswith(file, ".jl") && PlutoSliderServer.export_notebook(joinpath("notebooks", file))
             end
             '
+        - run: julia --project=docs docs/make.jl
       - name: Deploy to gh-pages
         uses: JamesIves/github-pages-deploy-action@releases/v3
         with:
