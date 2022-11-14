@@ -53,6 +53,14 @@ jobs:
         with:
           version: '1'
 
+      - name: Build documents
+        run: |
+          julia --project=docs -e '
+            using Pkg;
+            Pkg.develop(path=pwd());
+            Pkg.instantiate();
+            include(joinpath(pwd(), "docs", "make.jl"))
+            '
       - name: Run Pluto notebooks
         run: julia -e 'using Pkg;
             Pkg.add("PlutoUI");
@@ -61,16 +69,8 @@ jobs:
             Pkg.develop(path=".");
             using PlutoSliderServer;
             for file in readdir("notebooks")
-              endswith(file, ".jl") && PlutoSliderServer.export_notebook(joinpath("notebooks", file))
+              endswith(file, ".jl") && PlutoSliderServer.export_notebook(joinpath("notebooks", file); Export_output_dir=joinpath("docs", "build"))
             end
-            '
-      - name: Build documents
-        run: |
-          julia --project=docs -e '
-            using Pkg;
-            Pkg.develop(path=pwd());
-            Pkg.instantiate();
-            include(joinpath(pwd(), "docs", "make.jl"))
             '
       - name: Deploy to gh-pages
         uses: JamesIves/github-pages-deploy-action@releases/v3
