@@ -15,9 +15,18 @@ DocStringExtensions.@template (FUNCTIONS, METHODS, MACROS) =
     """
 
 """
-Case study 4 in the book "From Mathematics to Generic Programming".
+Case study in Chapter 4 of the book "Understanding Molecular Simulation, From Algorithms to Applications".
 It is about the molecule dynamics simulation of a Lennard-Jones Fluid in a 3D periodic box.
 The parameters are set close to the triple point.
+
+### Keyword arguments
+* `natoms` is the number of atoms.
+* `temperature` is the initial temperature.
+* `density` is the density of atoms.
+* `Nt` is the number of tims steps.
+* `Δt` is the time step.
+* `seed` is the random seed.
+* `gr_lastn` is the number of last n samples for collecting radial distribution.
 """
 function lennard_jones_triple_point(;
         natoms::Int = 108,  # number of atoms

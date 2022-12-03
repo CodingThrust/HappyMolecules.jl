@@ -1,33 +1,55 @@
+# abstract type for the potential field
 abstract type PotentialField end
+# abstract type for the bounding box
 abstract type Box{D} end
 
+# bounding box with periodic boundary condition
 struct PeriodicBox{D, T} <: Box{D}
     dimensions::SVector{D,T}
 end
 function PeriodicBox(x::T, xs::T...) where T<:Real
     return PeriodicBox(SVector(x, xs...))
 end
+
+# get the volume of the box
 volume(box::PeriodicBox) = prod(box.dimensions)
 
+"""
+    random_locations(box::Box, natoms::Int) -> SVector
+
+Returns a set of random locations in a box
+"""
 function random_locations(box::PeriodicBox{D, T}, natoms::Int) where {D,T}
     return [rand_uniform.(Ref(zero(T)), box.dimensions) for _=1:natoms]
 end
+
+# random uniform distribution
 function rand_uniform(min::T, max::T) where T <: AbstractFloat
     return rand(T) * (max - min) + min
 end
 function rand_uniform(min::T, max::T) where T <: Integer
     return rand(0:max-min-1) + min
 end
+
+"""
+    uniform_locations(box::Box, natoms::Int) -> SVector
+
+Returns a set of uniform locations in a box
+"""
 function uniform_locations(box::PeriodicBox{D, T}, natoms::Int) where {D,T}
     L = ceil(Int, natoms ^ (1/D))
     L^D ≈ natoms || @warn("`natoms = $natoms` is not equal to L^$D for some integer L.")
     CIS = CartesianIndices(ntuple(i->L, D))
     return vec([SVector((CIS[i].I .- 1) ./ L .* box.dimensions) for i=1:natoms])
 end
+
+# the largest distance in a box
 largest_distance(box::PeriodicBox) = sqrt(sum(abs2, box.dimensions)) / 2
 
+# the squared l2-norm
 norm2(v::SVector) = sum(abs2, v)
 
+# the configuration of molecular dynamics
 Base.@kwdef struct MDConfig{D, RT, BT<:Box{D}, PT<:PotentialField}
     box::BT
     potential::PT
@@ -37,6 +59,7 @@ Base.@kwdef struct MDConfig{D, RT, BT<:Box{D}, PT<:PotentialField}
     Δt::RT
 end
 
+# a runtime instance of molecular dynamics
 mutable struct MDRuntime{D, T, BT, PT}
     const config::MDConfig{D,T,BT,PT}
     t::T
@@ -167,7 +190,11 @@ function step!(md::MDRuntime)
     return md
 end
 
-# Benhcmark: lammps, gromacs
+# TODO: Benhcmark with lammps, gromacs
+
+"""
+Doing binning statistics.
+"""
 struct Bin{T}
     counts::Vector{Int}
     min::T
@@ -178,11 +205,16 @@ function Bin(min::T, max::T, n::Int) where T
     return Bin(counts, min, max)
 end
 
+"""
+Return the ticks (center of boxes) of bins.
+"""
 function ticks(bin::Bin)
     nticks = length(bin.counts)
     step = (bin.max - bin.min) / nticks
     return [bin.min + step * (i - 0.5) for i=1:nticks]
 end
+
+# add a new element to the bin
 function Base.push!(bin::Bin{T}, val::T) where T
     @assert val >= bin.min && val < bin.max "the value $val is out of binning range: [$(bin.min), $(bin.max))."
     nticks = length(bin.counts)
@@ -190,12 +222,26 @@ function Base.push!(bin::Bin{T}, val::T) where T
     bin.counts[floor(Int, (val - bin.min) / step) + 1] += 1
     return bin
 end
+
+# clear a bin
 function Base.empty!(bin::Bin{T}) where T
     bin.counts .= 0
     return bin
 end
+
+# number of counts
 ncounts(bin::Bin) = sum(bin.counts)
 
+"""
+Measure the radial distribtion over a molecular dynamics runtime instance.
+
+### Arguments
+* `md` is the molecular dynamics runtime instance.
+
+### Keyword argument
+* `nbins` is the number of bins,
+* `min_distance` and `max_distance` are the minimum and maximum distance of the bins.
+"""
 function measure_gr(md::MDRuntime{D}; nbins=500, min_distance=0.0, max_distance=minimum(md.config.box.dimensions)/2) where D
     bin = Bin(min_distance, max_distance, nbins)
     measure_gr!(md, bin)
@@ -276,6 +322,7 @@ function distance_vector(x, y, box::PeriodicBox)
     return r .- round.(r ./ box.dimensions) .* box.dimensions
 end
 
+# Verlet algorithm
 function integrate!(x::AbstractVector{SVector{D,T}}, xm, v, field, Δt) where {D,T}
     npart = length(x)
 
