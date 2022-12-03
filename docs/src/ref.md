@@ -1,3 +1,3 @@
 ```@autodocs
-Modules = [HappyMolecules]
+Modules = [HappyMolecules, HappyMolecules.Applications]
 ```

@@ -3,3 +3,4 @@
 *.swp
 .CondaPkg/
 docs/Manifest.toml
+docs/build/
