@@ -193,7 +193,7 @@ end
 # TODO: Benhcmark with lammps, gromacs
 
 """
-Doing binning statistics.
+The type for binning statistics.
 """
 struct Bin{T}
     counts::Vector{Int}
